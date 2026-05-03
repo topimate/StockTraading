@@ -1,3 +1,4 @@
+import json
 import streamlit as st
 
 from tools.stock_data_tool import get_stock_data, get_company_info
@@ -6,6 +7,8 @@ from tools.indicators_tool import (
     calculate_price_action_summary,
 )
 from utils.formatters import build_agent_input, generate_rule_based_summary
+
+from flow import run_stock_analysis
 
 
 STOCK_OPTIONS = {
@@ -33,6 +36,7 @@ def render_header():
     st.caption(
         "Educational stock analysis application with an agent-based architecture."
     )
+    st.caption("Created by **Szénás Anna & Topolyai Máté**")
 
     st.warning(
         "This application is for educational purposes only. "
@@ -87,7 +91,7 @@ def render_sidebar():
         ),
     )
 
-    run_button = st.sidebar.button("Prepare Analysis", type="primary")
+    prepare_button = st.sidebar.button("Prepare Analysis", type="primary")
 
     selected_stock = {
         "name": selected_company,
@@ -106,7 +110,7 @@ def render_sidebar():
         "additional_context": additional_context,
     }
 
-    return selected_stock, analysis_settings, user_preferences, run_button
+    return selected_stock, analysis_settings, user_preferences, prepare_button
 
 
 def render_selected_setup(
@@ -282,13 +286,130 @@ def render_rule_based_summary(market_summary: dict):
         st.write(f"- {point}")
 
 
-def render_agent_placeholders():
-    st.subheader("AI Agent Analysis")
+def build_agent_specific_inputs(agent_input: dict) -> tuple[dict, dict, dict]:
+    """
+    Converts the general Streamlit agent_input into the exact input objects
+    expected by the 3 specialist agents.
 
-    st.info(
-        "The AI agents are not connected yet. "
-        "This section is prepared for the next development phase."
+    The supervisor input is NOT built here because flow.py builds it
+    from the outputs of the 3 specialist agents.
+    """
+
+    selected_stock = agent_input["selected_stock"]
+    company_info = agent_input["company_info"]
+    user_preferences = agent_input["user_preferences"]
+    market_summary = agent_input["market_summary"]
+    price_action_summary = agent_input["price_action_summary"]
+    analysis_settings = agent_input["analysis_settings"]
+
+    industry_input = {
+        "selected_stock": selected_stock,
+        "company_info": company_info,
+        "user_preferences": user_preferences,
+    }
+
+    technical_input = {
+        "ticker": selected_stock["ticker"],
+        "period": analysis_settings["period"],
+        "interval": analysis_settings["interval"],
+        "market_summary": market_summary,
+        "price_action_summary": price_action_summary,
+    }
+
+    risk_input = {
+        "ticker": selected_stock["ticker"],
+        "user_preferences": {
+            "risk_profile": user_preferences["risk_profile"],
+            "investment_horizon": user_preferences["investment_horizon"],
+            "analysis_depth": user_preferences["analysis_depth"],
+            "additional_context": user_preferences["additional_context"],
+        },
+        "market_summary": {
+            "period_return_percent": market_summary.get("period_return_percent"),
+            "annualized_volatility_percent": market_summary.get("annualized_volatility_percent"),
+            "volatility_level": market_summary.get("volatility_level"),
+            "max_drawdown_percent": market_summary.get("max_drawdown_percent"),
+            "rsi_status": market_summary.get("rsi_status"),
+            "trend": market_summary.get("trend"),
+            "data_quality": market_summary.get("data_quality"),
+        },
+        "price_action_summary": price_action_summary,
+    }
+
+    return industry_input, technical_input, risk_input
+
+def detect_agent_api_errors(agent_result: dict) -> list[str]:
+    """
+    Detects API/rate-limit/token/quota related errors from agent outputs.
+
+    The agents.py file returns errors as text, so we inspect the returned strings.
+    """
+    outputs = agent_result.get("agent_outputs", {})
+
+    error_keywords = [
+        "rate limit",
+        "ratelimit",
+        "rate_limit",
+        "429",
+        "quota",
+        "token limit",
+        "tokens per minute",
+        "tokens per day",
+        "maximum tokens",
+        "max tokens",
+        "max_completion_tokens",
+        "too many requests",
+        "insufficient_quota",
+        "An error occurred while running the agent",
+    ]
+
+    detected_errors = []
+
+    for agent_key, output in outputs.items():
+        if not isinstance(output, str):
+            continue
+
+        output_lower = output.lower()
+
+        if any(keyword.lower() in output_lower for keyword in error_keywords):
+            detected_errors.append(
+                f"{agent_key}: The API may have reached a rate limit, token limit, quota limit, or another provider-side restriction."
+            )
+
+    return detected_errors
+
+
+def render_agent_api_warning(agent_result: dict):
+    """
+    Shows a user-friendly warning if the AI provider/API failed.
+    """
+    detected_errors = detect_agent_api_errors(agent_result)
+
+    if not detected_errors:
+        return
+
+    st.error(
+        "The AI agent analysis could not be completed reliably because the API provider may have reached a rate limit, token limit, or temporary usage quota."
     )
+
+    st.warning(
+        "Please try again later. If the issue continues, contact the project creators: "
+        "Szénás Anna & Topolyai Máté."
+    )
+
+    with st.expander("Technical details"):
+        for error in detected_errors:
+            st.write(f"- {error}")
+
+def render_agent_results(agent_result: dict):
+    """
+    Displays the full agent analysis result returned by flow.py.
+    """
+
+    st.subheader("AI Agent Analysis Results")
+
+    outputs = agent_result.get("agent_outputs", {})
+    inputs = agent_result.get("agent_inputs", {})
 
     tab1, tab2, tab3, tab4 = st.tabs(
         [
@@ -300,46 +421,63 @@ def render_agent_placeholders():
     )
 
     with tab1:
-        st.write("**Status:** Waiting for LLM integration.")
-        st.write(
-            "This agent will analyze the company, sector, industry and general business environment."
-        )
-        st.write(
-            "**Planned input:** selected_stock, company_info, user_preferences."
-        )
+        st.markdown("### Industry Expert Agent")
+        st.write(outputs.get("industry_expert_result", "No output available."))
 
     with tab2:
-        st.write("**Status:** Waiting for LLM integration.")
-        st.write(
-            "This agent will analyze SMA, RSI, trend, price action and momentum."
-        )
-        st.write(
-            "**Planned input:** market_summary, price_action_summary, data_quality."
-        )
+        st.markdown("### Technical Analyst Agent")
+        st.write(outputs.get("technical_analyst_result", "No output available."))
 
     with tab3:
-        st.write("**Status:** Waiting for LLM integration.")
-        st.write(
-            "This agent will evaluate volatility, drawdown, risk profile fit and caution flags."
-        )
-        st.write(
-            "**Planned input:** user_preferences, market_summary, price_action_summary."
-        )
+        st.markdown("### Risk Management Agent")
+        st.write(outputs.get("risk_management_result", "No output available."))
 
     with tab4:
-        st.write("**Status:** Waiting for LLM integration.")
-        st.write(
-            "This agent will combine all agent outputs into one final educational signal."
-        )
-        st.write(
-            "**Planned input:** all agent outputs, market_summary, user_preferences."
-        )
+        st.markdown("### Supervisor Agent")
+        st.write(outputs.get("supervisor_result", "No output available."))
+
+
+
+def prepare_analysis_data(
+    selected_stock: dict,
+    analysis_settings: dict,
+    user_preferences: dict,
+) -> dict:
+    """
+    Loads stock data, calculates metrics and builds the general agent input.
+    """
+
+    data = get_stock_data(
+        ticker=selected_stock["ticker"],
+        period=analysis_settings["period"],
+        interval=analysis_settings["interval"],
+    )
+
+    company_info = get_company_info(selected_stock["ticker"])
+    market_summary = calculate_market_summary(data)
+    price_action_summary = calculate_price_action_summary(data)
+
+    agent_input = build_agent_input(
+        selected_stock=selected_stock,
+        company_info=company_info,
+        user_preferences=user_preferences,
+        market_summary=market_summary,
+        price_action_summary=price_action_summary,
+        analysis_settings=analysis_settings,
+    )
+
+    return {
+        "company_info": company_info,
+        "market_summary": market_summary,
+        "price_action_summary": price_action_summary,
+        "agent_input": agent_input,
+    }
 
 
 def main():
     render_header()
 
-    selected_stock, analysis_settings, user_preferences, run_button = render_sidebar()
+    selected_stock, analysis_settings, user_preferences, prepare_button = render_sidebar()
 
     render_selected_setup(
         selected_stock=selected_stock,
@@ -347,47 +485,122 @@ def main():
         user_preferences=user_preferences,
     )
 
-    if run_button:
+    if "prepared_analysis" not in st.session_state:
+        st.session_state["prepared_analysis"] = None
+
+    if "agent_result" not in st.session_state:
+        st.session_state["agent_result"] = None
+
+    if prepare_button:
         try:
             with st.spinner("Loading stock data and preparing agent input..."):
-                data = get_stock_data(
-                    ticker=selected_stock["ticker"],
-                    period=analysis_settings["period"],
-                    interval=analysis_settings["interval"],
-                )
-
-                company_info = get_company_info(selected_stock["ticker"])
-                market_summary = calculate_market_summary(data)
-                price_action_summary = calculate_price_action_summary(data)
-
-                agent_input = build_agent_input(
+                prepared_analysis = prepare_analysis_data(
                     selected_stock=selected_stock,
-                    company_info=company_info,
-                    user_preferences=user_preferences,
-                    market_summary=market_summary,
-                    price_action_summary=price_action_summary,
                     analysis_settings=analysis_settings,
+                    user_preferences=user_preferences,
                 )
+
+            st.session_state["prepared_analysis"] = prepared_analysis
+            st.session_state["agent_result"] = None
 
             st.success("Analysis data prepared successfully.")
-
-            render_company_info(company_info)
-            render_data_quality_warning(market_summary)
-            render_market_summary(company_info, market_summary)
-            render_price_action_summary(price_action_summary)
-            render_rule_based_summary(market_summary)
-
-            with st.expander("Show raw agent input data"):
-                st.json(agent_input)
-
-            render_agent_placeholders()
 
         except Exception as e:
             st.error("Something went wrong while preparing the analysis.")
             st.exception(e)
 
-    else:
+    prepared_analysis = st.session_state.get("prepared_analysis")
+
+    if prepared_analysis is None:
         st.info("Choose your settings in the sidebar and click **Prepare Analysis**.")
+        return
+
+    company_info = prepared_analysis["company_info"]
+    market_summary = prepared_analysis["market_summary"]
+    price_action_summary = prepared_analysis["price_action_summary"]
+    agent_input = prepared_analysis["agent_input"]
+
+    render_company_info(company_info)
+    render_data_quality_warning(market_summary)
+    render_market_summary(company_info, market_summary)
+    render_price_action_summary(price_action_summary)
+    render_rule_based_summary(market_summary)
+
+    with st.expander("Show raw general agent input data"):
+        st.json(agent_input)
+
+    st.download_button(
+        label="Download general agent input as JSON",
+        data=json.dumps(agent_input, indent=2, ensure_ascii=False),
+        file_name=f"{agent_input['selected_stock']['ticker']}_agent_input.json",
+        mime="application/json",
+    )
+
+    st.divider()
+
+    st.subheader("Run AI Agents")
+
+    st.write(
+        "Click the button below to run the Industry Expert, Technical Analyst, "
+        "Risk Management and Supervisor agents using the prepared input data."
+    )
+
+    st.caption(
+        "The Supervisor Agent receives only the outputs of the three specialist agents, "
+        "because this logic is defined in flow.py."
+    )
+
+    run_agents_button = st.button(
+        "Run AI Agent Analysis",
+        type="primary",
+        help=(
+            "Runs the LLM-based agents through a free/limited API provider. "
+            "The request may fail if the provider rate limit or token limit is reached."
+        ),
+    )
+
+    if run_agents_button:
+        try:
+            with st.spinner("Running AI agents through Groq API... This may take a moment."):
+                industry_input, technical_input, risk_input = build_agent_specific_inputs(
+                    agent_input
+                )
+
+                agent_result = run_stock_analysis(
+                    industry_input=industry_input,
+                    technical_input=technical_input,
+                    risk_input=risk_input,
+                )
+
+            st.session_state["agent_result"] = agent_result
+            detected_errors = detect_agent_api_errors(agent_result)
+
+            if detected_errors:
+                st.warning(
+                    "The agent flow finished, but one or more agents reported an API-related issue."
+                )
+            else:
+                st.success("AI agent analysis completed successfully.")
+
+        except Exception as e:
+            st.error(
+                "The AI agent analysis could not be completed. "
+                "The API may have reached a rate limit, token limit, or temporary provider restriction."
+            )
+            st.warning(
+                "Please try again later. If the issue continues, contact the project creators: "
+                "Szénás Anna & Topolyai Máté."
+            )
+
+            with st.expander("Technical error details"):
+                st.exception(e)
+
+    agent_result = st.session_state.get("agent_result")
+
+    if agent_result is not None:
+        render_agent_results(agent_result)
+    else:
+        st.info("AI agents have not been run yet.")
 
 
 if __name__ == "__main__":

@@ -21,10 +21,16 @@ def build_agent_input(
     analysis_settings: dict,
 ) -> dict:
     """
-    Builds the structured input object that will later be passed to the LLM agents.
+    Builds the structured general input object.
 
-    This object is the central input package for the agent-based workflow.
-    Different agents will use different parts of this object.
+    This general object is created by the Streamlit app.
+    Later it is split into:
+    - industry_input
+    - technical_input
+    - risk_input
+
+    The supervisor input is built inside flow.py from the outputs
+    of the three specialist agents.
     """
     return {
         "selected_stock": {
@@ -43,25 +49,6 @@ def build_agent_input(
         "user_preferences": user_preferences,
         "market_summary": market_summary,
         "price_action_summary": price_action_summary,
-        "agent_input_guidance": {
-            "industry_expert_agent": (
-                "Use selected_stock, company_info and user_preferences. "
-                "Focus on the company, sector, industry, business environment and general industry risks."
-            ),
-            "technical_analyst_agent": (
-                "Use market_summary and price_action_summary. "
-                "Focus on RSI, SMA20, SMA50, trend, price action and momentum. "
-                "If data_quality.has_enough_data is false, clearly mention that the technical analysis has lower confidence."
-            ),
-            "risk_management_agent": (
-                "Use user_preferences, market_summary and price_action_summary. "
-                "Focus on volatility, drawdown, risk level and whether the stock matches the user's risk profile."
-            ),
-            "supervisor_agent": (
-                "Use the outputs of all other agents plus market_summary and user_preferences. "
-                "Create a final educational signal and reduce confidence if data quality is weak."
-            ),
-        },
         "important_note": (
             "This analysis is for educational purposes only. "
             "It is not financial advice and should not be used as the only basis for investment decisions."
