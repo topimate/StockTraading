@@ -36,6 +36,7 @@ def render_header():
     st.caption(
         "Educational stock analysis application with an agent-based architecture."
     )
+    st.caption("Created by **Szénás Anna & Topolyai Máté**")
 
     st.warning(
         "This application is for educational purposes only. "
@@ -337,6 +338,68 @@ def build_agent_specific_inputs(agent_input: dict) -> tuple[dict, dict, dict]:
 
     return industry_input, technical_input, risk_input
 
+def detect_agent_api_errors(agent_result: dict) -> list[str]:
+    """
+    Detects API/rate-limit/token/quota related errors from agent outputs.
+
+    The agents.py file returns errors as text, so we inspect the returned strings.
+    """
+    outputs = agent_result.get("agent_outputs", {})
+
+    error_keywords = [
+        "rate limit",
+        "ratelimit",
+        "rate_limit",
+        "429",
+        "quota",
+        "token limit",
+        "tokens per minute",
+        "tokens per day",
+        "maximum tokens",
+        "max tokens",
+        "max_completion_tokens",
+        "too many requests",
+        "insufficient_quota",
+        "An error occurred while running the agent",
+    ]
+
+    detected_errors = []
+
+    for agent_key, output in outputs.items():
+        if not isinstance(output, str):
+            continue
+
+        output_lower = output.lower()
+
+        if any(keyword.lower() in output_lower for keyword in error_keywords):
+            detected_errors.append(
+                f"{agent_key}: The API may have reached a rate limit, token limit, quota limit, or another provider-side restriction."
+            )
+
+    return detected_errors
+
+
+def render_agent_api_warning(agent_result: dict):
+    """
+    Shows a user-friendly warning if the AI provider/API failed.
+    """
+    detected_errors = detect_agent_api_errors(agent_result)
+
+    if not detected_errors:
+        return
+
+    st.error(
+        "The AI agent analysis could not be completed reliably because the API provider may have reached a rate limit, token limit, or temporary usage quota."
+    )
+
+    st.warning(
+        "Please try again later. If the issue continues, contact the project creators: "
+        "Szénás Anna & Topolyai Máté."
+    )
+
+    with st.expander("Technical details"):
+        for error in detected_errors:
+            st.write(f"- {error}")
 
 def render_agent_results(agent_result: dict):
     """
@@ -487,7 +550,14 @@ def main():
         "because this logic is defined in flow.py."
     )
 
-    run_agents_button = st.button("Run AI Agent Analysis", type="primary")
+    run_agents_button = st.button(
+        "Run AI Agent Analysis",
+        type="primary",
+        help=(
+            "Runs the LLM-based agents through a free/limited API provider. "
+            "The request may fail if the provider rate limit or token limit is reached."
+        ),
+    )
 
     if run_agents_button:
         try:
@@ -503,11 +573,27 @@ def main():
                 )
 
             st.session_state["agent_result"] = agent_result
-            st.success("AI agent analysis completed successfully.")
+            detected_errors = detect_agent_api_errors(agent_result)
+
+            if detected_errors:
+                st.warning(
+                    "The agent flow finished, but one or more agents reported an API-related issue."
+                )
+            else:
+                st.success("AI agent analysis completed successfully.")
 
         except Exception as e:
-            st.error("Something went wrong while running the AI agents.")
-            st.exception(e)
+            st.error(
+                "The AI agent analysis could not be completed. "
+                "The API may have reached a rate limit, token limit, or temporary provider restriction."
+            )
+            st.warning(
+                "Please try again later. If the issue continues, contact the project creators: "
+                "Szénás Anna & Topolyai Máté."
+            )
+
+            with st.expander("Technical error details"):
+                st.exception(e)
 
     agent_result = st.session_state.get("agent_result")
 
