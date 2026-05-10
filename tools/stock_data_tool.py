@@ -3,17 +3,6 @@ import pandas as pd
 
 
 def get_stock_data(ticker: str, period: str = "6mo", interval: str = "1d") -> pd.DataFrame:
-    """
-    Downloads historical stock data from Yahoo Finance using yfinance.
-
-    Args:
-        ticker: Stock ticker, for example AAPL.
-        period: Data period, for example 1mo, 3mo, 6mo, 1y.
-        interval: Data interval, for example 1d, 1wk.
-
-    Returns:
-        pandas DataFrame with stock price data.
-    """
     stock = yf.Ticker(ticker)
     data = stock.history(period=period, interval=interval)
 
@@ -25,9 +14,7 @@ def get_stock_data(ticker: str, period: str = "6mo", interval: str = "1d") -> pd
 
 
 def get_company_info(ticker: str) -> dict:
-    """
-    Gets basic company information from yfinance.
-    """
+
     stock = yf.Ticker(ticker)
 
     try:

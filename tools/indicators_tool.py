@@ -3,9 +3,7 @@ import numpy as np
 
 
 def calculate_rsi(data: pd.DataFrame, period: int = 14) -> pd.Series:
-    """
-    Calculates the RSI indicator based on the Close price.
-    """
+
     delta = data["Close"].diff()
 
     gain = delta.where(delta > 0, 0)
@@ -21,9 +19,7 @@ def calculate_rsi(data: pd.DataFrame, period: int = 14) -> pd.Series:
 
 
 def classify_volatility(volatility: float) -> str:
-    """
-    Classifies annualized volatility.
-    """
+
     if volatility < 0.20:
         return "Low"
     elif volatility < 0.40:
@@ -33,9 +29,7 @@ def classify_volatility(volatility: float) -> str:
 
 
 def classify_trend(sma_20: float, sma_50: float) -> str:
-    """
-    Simple trend classification based on SMA20 and SMA50.
-    """
+
     if sma_20 > sma_50:
         return "Bullish"
     elif sma_20 < sma_50:
@@ -44,9 +38,7 @@ def classify_trend(sma_20: float, sma_50: float) -> str:
 
 
 def classify_rsi(rsi: float) -> str:
-    """
-    Classifies RSI status.
-    """
+
     if rsi >= 70:
         return "Overbought"
     elif rsi <= 30:
@@ -55,9 +47,7 @@ def classify_rsi(rsi: float) -> str:
 
 
 def calculate_max_drawdown(data: pd.DataFrame) -> float:
-    """
-    Calculates max drawdown percentage.
-    """
+
     cumulative_max = data["Close"].cummax()
     drawdown = (data["Close"] - cumulative_max) / cumulative_max
     max_drawdown = drawdown.min()
@@ -98,13 +88,6 @@ def calculate_price_action_summary(data: pd.DataFrame) -> dict:
 
 
 def calculate_market_summary(data: pd.DataFrame) -> dict:
-    """
-    Calculates the main stock indicators needed by the agents.
-
-    Important:
-    If there is not enough historical data, some indicators will be None.
-    In that case, a data_quality warning is added instead of stopping the analysis.
-    """
     df = data.copy()
 
     df["SMA20"] = df["Close"].rolling(window=20).mean()

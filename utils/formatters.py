@@ -20,18 +20,7 @@ def build_agent_input(
     price_action_summary: dict,
     analysis_settings: dict,
 ) -> dict:
-    """
-    Builds the structured general input object.
 
-    This general object is created by the Streamlit app.
-    Later it is split into:
-    - industry_input
-    - technical_input
-    - risk_input
-
-    The supervisor input is built inside flow.py from the outputs
-    of the three specialist agents.
-    """
     return {
         "selected_stock": {
             "display_name": selected_stock["name"],
@@ -57,9 +46,7 @@ def build_agent_input(
 
 
 def generate_rule_based_summary(market_summary: dict) -> list[str]:
-    """
-    Generates a simple non-LLM technical summary.
-    """
+
     summary = []
 
     trend = market_summary.get("trend")
